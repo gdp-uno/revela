@@ -62,6 +62,12 @@ uniform float u_vig_feather; uniform float u_vig_roundness;
 // Grain
 uniform float u_grain_amount; uniform float u_grain_size; uniform float u_grain_rough;
 
+// Luminance-based Saturation
+uniform float u_lum_sat_sh; uniform float u_lum_sat_mid; uniform float u_lum_sat_hi;
+
+// Halation
+uniform float u_halation_amount; uniform float u_halation_radius;
+
 // Mask (single layer; Wave D)
 // type: 0=none 1=linear_gradient 2=radial_gradient 3=lum_range 4=color_range
 uniform int   u_mask_type;
@@ -242,6 +248,16 @@ void main() {
   hsv.z=clamp(hsv.z+u_value/100.,0.,1.);
   c=hsv_to_rgb(hsv);
 
+  // 14.5. Luminance-based Saturation
+  if(abs(u_lum_sat_sh)+abs(u_lum_sat_mid)+abs(u_lum_sat_hi)>0.001){
+    float lbs_lm=dot(c,vec3(0.2126,0.7152,0.0722));
+    float sh_wt=1.-smoothstep(0.,0.35,lbs_lm);
+    float hi_wt=smoothstep(0.65,1.,lbs_lm);
+    float mid_wt=max(0.,1.-sh_wt-hi_wt);
+    float sdelta=(u_lum_sat_sh*sh_wt+u_lum_sat_mid*mid_wt+u_lum_sat_hi*hi_wt)/100.;
+    vec3 lbs_h=rgb_to_hsv(c); lbs_h.y=clamp(lbs_h.y+sdelta,0.,1.); c=hsv_to_rgb(lbs_h);
+  }
+
   // 15. Color Mixer
   const float HW=0.0833;
   hsv=rgb_to_hsv(c);
@@ -326,6 +342,25 @@ void main() {
     c=mix(c,c_adj,mv);
   }
 
+  // 18.5. Halation (warm light bleed around highlight areas, simulates film)
+  if(u_halation_amount>0.001){
+    vec2 hts=vec2(1.)/vec2(textureSize(u_image,0));
+    float hr=u_halation_radius;
+    vec3 hbloom=vec3(0.); float hbw=0.;
+    for(int hdy=-1;hdy<=1;hdy++){for(int hdx=-1;hdx<=1;hdx++){
+      vec3 hnb=texture(u_image,clamp(v_uv+vec2(float(hdx),float(hdy))*hts*hr,0.,1.)).rgb;
+      if(u_linear_in<0.5) hnb=srgb_to_linear(hnb);
+      float hlum=dot(hnb,vec3(0.2126,0.7152,0.0722));
+      float hw=smoothstep(0.5,1.,hlum); hbloom+=hnb*hw; hbw+=hw;
+    }}
+    if(hbw>0.001){
+      hbloom/=hbw;
+      hbloom=vec3(hbloom.r*1.3,hbloom.g*0.85,hbloom.b*0.4);
+      c+=hbloom*(u_halation_amount/100.)*0.8;
+      c=clamp(c,0.,1.);
+    }
+  }
+
   // 19. Vignette
   if(abs(u_vig_amount)>0.001){
     vec2 vu=(v_uv-.5)*2.;
@@ -380,6 +415,8 @@ export interface ColorGradingParams {
 }
 export interface VignetteParams { amount: number; midpoint: number; feather: number; roundness: number; }
 export interface GrainParams    { amount: number; size: number; roughness: number; }
+export interface HalationParams { amount: number; radius: number; }
+export interface LumSatParams   { shadows: number; midtones: number; highlights: number; }
 export interface CalibrationParams {
   shadowTint: number;
   redHue: number; redSat: number; greenHue: number; greenSat: number; blueHue: number; blueSat: number;
@@ -418,6 +455,8 @@ export interface AllParams {
   calibration:  CalibrationParams;
   mask:         MaskParams;
   lutStrength:  number;  // 0-1
+  halation:     HalationParams;
+  lumSat:       LumSatParams;
 }
 
 export interface GlState {
@@ -519,6 +558,8 @@ export function initGl(canvas: HTMLCanvasElement): GlState {
     "u_grain_amount","u_grain_size","u_grain_rough",
     "u_mask_type","u_mask_invert","u_mask_p0","u_mask_p1",
     "u_mask_exposure","u_mask_contrast","u_mask_highlights","u_mask_shadows","u_mask_sat","u_mask_temp","u_mask_tint",
+    "u_lum_sat_sh","u_lum_sat_mid","u_lum_sat_hi",
+    "u_halation_amount","u_halation_radius",
   ];
   const uniforms: Record<string,WebGLUniformLocation|null> = {};
   for (const n of uniformNames) uniforms[n] = gl.getUniformLocation(prog,n);
@@ -582,7 +623,7 @@ export function render(state: GlState, params: AllParams): void {
   gl.uniform1i(uniforms["u_tone_curve"],1);
   gl.uniform1i(uniforms["u_lut_3d"],2);
 
-  const { basic:b, detail:d, lab, hsv, colorMixer:cm, colorGrading:cg, vignette:vig, grain, calibration:cal, mask, lutStrength } = params;
+  const { basic:b, detail:d, lab, hsv, colorMixer:cm, colorGrading:cg, vignette:vig, grain, calibration:cal, mask, lutStrength, halation, lumSat } = params;
 
   gl.uniform1f(uniforms["u_linear_in"], state.linearIn?1:0);
   gl.uniform1f(uniforms["u_lut_strength"], lutStrength);
@@ -623,6 +664,11 @@ export function render(state: GlState, params: AllParams): void {
   gl.uniform1f(uniforms["u_mask_sat"],mask.sat);
   gl.uniform1f(uniforms["u_mask_temp"],mask.temp);
   gl.uniform1f(uniforms["u_mask_tint"],mask.tint);
+  gl.uniform1f(uniforms["u_lum_sat_sh"],lumSat.shadows);
+  gl.uniform1f(uniforms["u_lum_sat_mid"],lumSat.midtones);
+  gl.uniform1f(uniforms["u_lum_sat_hi"],lumSat.highlights);
+  gl.uniform1f(uniforms["u_halation_amount"],halation.amount);
+  gl.uniform1f(uniforms["u_halation_radius"],halation.radius);
 
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,state.imageTexture);
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D,state.toneCurveTex);

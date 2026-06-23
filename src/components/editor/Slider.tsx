@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface Props {
   label: string;
@@ -15,9 +15,10 @@ interface Props {
 export default function Slider({
   label, value, min, max, step = 1, defaultValue = 0, onChange, unit = "",
 }: Props) {
-  const trackRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ lastX: number; currentVal: number } | null>(null);
+  const trackRef  = useRef<HTMLDivElement>(null);
+  const dragRef   = useRef<{ lastX: number; currentVal: number } | null>(null);
   const lastTapRef = useRef(0);
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
 
   const decimals = step >= 1 ? 0 : Math.round(-Math.log10(step));
 
@@ -29,14 +30,12 @@ export default function Slider({
     [min, max, step, decimals]
   );
 
-  const pct = ((value - min) / (max - min)) * 100;
+  const pct     = ((value - min) / (max - min)) * 100;
   const zeroPct = ((-min) / (max - min)) * 100;
-  const isPos = value >= 0;
-  const barLeft = isPos ? zeroPct : pct;
+  const isPos   = value >= 0;
+  const barLeft  = isPos ? zeroPct : pct;
   const barWidth = isPos ? pct - zeroPct : zeroPct - pct;
-
   const displayVal = (value > 0 ? "+" : "") + value.toFixed(decimals);
-  const isModified = Math.abs(value - defaultValue) >= Math.max(step * 0.5, 0.001);
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -77,25 +76,24 @@ export default function Slider({
     lastTapRef.current = now;
   }, [defaultValue, onChange]);
 
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setMenuPos({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  // Close context menu on Escape
+  useEffect(() => {
+    if (!menuPos) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMenuPos(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuPos]);
+
   return (
-    <div className="flex flex-col gap-1.5 group/slider">
+    <div className="flex flex-col gap-1.5">
       <div className="flex justify-between items-center">
         <span className="text-[10px] font-medium tracking-widest uppercase text-zinc-500">{label}</span>
-        <div className="flex items-center gap-1.5">
-          {isModified && (
-            <button
-              className="text-[10px] text-zinc-600 hover:text-zinc-300 opacity-0 group-hover/slider:opacity-100 transition-opacity leading-none"
-              onClick={() => onChange(defaultValue)}
-              title="リセット (ダブルクリックでも可)"
-            >
-              ↺
-            </button>
-          )}
-          {isModified && (
-            <span className="w-1 h-1 rounded-full bg-zinc-500 flex-shrink-0" />
-          )}
-          <span className="text-[11px] text-zinc-300 tabular-nums">{displayVal}{unit}</span>
-        </div>
+        <span className="text-[11px] text-zinc-300 tabular-nums">{displayVal}{unit}</span>
       </div>
       <div
         ref={trackRef}
@@ -106,6 +104,7 @@ export default function Slider({
         onPointerCancel={handlePointerUp}
         onDoubleClick={handleDoubleClick}
         onTouchEnd={handleTouchEnd}
+        onContextMenu={handleContextMenu}
       >
         <div className="absolute inset-x-0 h-px bg-zinc-700" />
         <div className="absolute w-px h-2 bg-zinc-600" style={{ left: `${zeroPct}%` }} />
@@ -115,6 +114,27 @@ export default function Slider({
           style={{ left: `calc(${pct}% - 5px)` }}
         />
       </div>
+
+      {/* Right-click context menu */}
+      {menuPos && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setMenuPos(null)} />
+          <div
+            className="fixed z-50 bg-zinc-800 border border-zinc-700 rounded-md shadow-xl py-1 min-w-[140px]"
+            style={{ left: menuPos.x, top: menuPos.y }}
+          >
+            <button
+              className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 hover:text-white transition-colors"
+              onClick={() => { onChange(defaultValue); setMenuPos(null); }}
+            >
+              デフォルト値にリセット
+            </button>
+            <div className="px-3 pt-1 pb-0.5 text-[10px] text-zinc-600">
+              ダブルクリックでも可
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
