@@ -5,6 +5,7 @@ import {
   importFiles, getAllPhotos, getCollections, createCollection,
   filterPhotos, sortPhotos, deletePhoto,
 } from "@/lib/catalog";
+import { isRawFile, RAW_ACCEPT } from "@/lib/raw-decoder";
 import PhotoGrid from "./PhotoGrid";
 import MetaBar from "./MetaBar";
 
@@ -32,7 +33,7 @@ export default function LibraryView({ onOpenInDevelop }: Props) {
   const handleImport = useCallback(async () => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = "image/jpeg,image/png";
+    input.accept = `image/jpeg,image/png,${RAW_ACCEPT}`;
     input.multiple = true;
     input.onchange = async () => {
       if (!input.files?.length) return;
@@ -46,7 +47,7 @@ export default function LibraryView({ onOpenInDevelop }: Props) {
 
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/") || isRawFile(f));
     if (!files.length) return;
     setImporting(true);
     await importFiles(files);

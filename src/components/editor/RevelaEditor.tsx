@@ -10,6 +10,7 @@ import {
 import type { CubeLUT } from "@/lib/lut";
 import type { CatalogPhoto } from "@/lib/catalog";
 import { updatePhoto, getPhotoBlob } from "@/lib/catalog";
+import { isRawFile, decodeRawToImageData, RAW_ACCEPT } from "@/lib/raw-decoder";
 import { isTauri, loadImageNative, openFileDialog, saveFileDialog, exportImageNative } from "@/lib/tauri-bridge";
 import Panel from "./Panel";
 import Slider from "./Slider";
@@ -134,18 +135,31 @@ export default function RevelaEditor({ catalogPhoto, onBackToLibrary }: Props) {
     (async () => {
       const blob = await getPhotoBlob(catalogPhoto.id);
       if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      const img = new Image();
-      img.onload = () => {
-        if (!glRef.current) return;
-        glRef.current = uploadTexture(glRef.current, img);
-        render(glRef.current, buildParams());
-        setHasImage(true);
-        setFilename(catalogPhoto.filename);
-        URL.revokeObjectURL(url);
-      };
-      img.src = url;
       if (catalogPhoto.developSettings) applySettingsJson(catalogPhoto.developSettings);
+      if (isRawFile(blob)) {
+        try {
+          setStatus("RAWデコード中...");
+          const { imageData } = await decodeRawToImageData(blob);
+          if (!glRef.current) return;
+          glRef.current = uploadTexture(glRef.current, imageData);
+          render(glRef.current, buildParams());
+          setHasImage(true);
+          setFilename(catalogPhoto.filename);
+          setStatus(null);
+        } catch (e) { setStatus(`RAW読み込みエラー: ${(e as Error).message}`); }
+      } else {
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          if (!glRef.current) return;
+          glRef.current = uploadTexture(glRef.current, img);
+          render(glRef.current, buildParams());
+          setHasImage(true);
+          setFilename(catalogPhoto.filename);
+          URL.revokeObjectURL(url);
+        };
+        img.src = url;
+      }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalogPhoto?.id]);
@@ -202,11 +216,24 @@ export default function RevelaEditor({ catalogPhoto, onBackToLibrary }: Props) {
     } else {
       const input = document.createElement("input");
       input.type = "file";
-      input.accept = "image/jpeg,image/png";
-      input.onchange = () => {
+      input.accept = `image/jpeg,image/png,${RAW_ACCEPT}`;
+      input.onchange = async () => {
         const file = input.files?.[0];
         if (!file) return;
-        loadFromUrl(URL.createObjectURL(file), file.name);
+        if (isRawFile(file)) {
+          try {
+            setStatus("RAWデコード中...");
+            const { imageData } = await decodeRawToImageData(file);
+            if (!glRef.current) return;
+            glRef.current = uploadTexture(glRef.current, imageData);
+            render(glRef.current, buildParams());
+            setHasImage(true);
+            setFilename(file.name);
+            setStatus(null);
+          } catch (e) { setStatus(`RAW読み込みエラー: ${(e as Error).message}`); }
+        } else {
+          loadFromUrl(URL.createObjectURL(file), file.name);
+        }
       };
       input.click();
     }

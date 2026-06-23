@@ -1,4 +1,5 @@
 "use client";
+import { isRawFile, decodeRawThumbnail } from "./raw-decoder";
 
 // Revela photo catalog — IndexedDB-backed
 
@@ -101,6 +102,7 @@ const idbDel = (store: IDBObjectStore, key: string): Promise<void> =>
 // ── Thumbnail ─────────────────────────────────────────────────
 
 export async function generateThumbnail(file: File, maxSize = 256): Promise<{ dataURL: string; width: number; height: number }> {
+  if (isRawFile(file)) return decodeRawThumbnail(file, maxSize);
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
