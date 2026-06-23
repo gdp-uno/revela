@@ -8,7 +8,6 @@ const nextConfig: NextConfig = {
   images: { unoptimized: true },
   assetPrefix: isTauri ? "/" : undefined,
   basePath: isStaging ? "/edit" : undefined,
-  trailingSlash: isStaging ? true : undefined,
 };
 
 export default nextConfig;
