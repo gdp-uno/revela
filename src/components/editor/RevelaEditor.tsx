@@ -11,7 +11,12 @@ import Slider from "./Slider";
 import ToneCurve from "./ToneCurve";
 import ColorMixer, { type ColorMixerParams, DEFAULT_COLOR_MIXER, colorMixerToArray } from "./ColorMixer";
 
-const DEFAULT_BASIC: BasicParams = { exposure: 0, contrast: 0, highlights: 0, shadows: 0, whites: 0, blacks: 0 };
+const DEFAULT_BASIC: BasicParams = {
+  temp: 0, tint: 0,
+  exposure: 0, contrast: 0,
+  highlights: 0, shadows: 0, whites: 0, blacks: 0,
+  texture: 0, clarity: 0, dehaze: 0, vibrance: 0, saturation: 0,
+};
 const DEFAULT_LAB: LabParams = { L: 0, A: 0, B: 0 };
 const DEFAULT_HSV: HsvParams = { hue: 0, saturation: 0, value: 0 };
 
@@ -27,7 +32,6 @@ export default function RevelaEditor() {
   const [filename, setFilename] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
 
-  // Build AllParams from current state
   const buildParams = useCallback(
     (b = basic, l = lab, h = hsv, cm = colorMixer): AllParams => ({
       basic: b, lab: l, hsv: h, colorMixer: colorMixerToArray(cm),
@@ -35,14 +39,12 @@ export default function RevelaEditor() {
     [basic, lab, hsv, colorMixer]
   );
 
-  // Init GL
   useEffect(() => {
     if (!canvasRef.current) return;
     try { glRef.current = initGl(canvasRef.current); }
     catch (e) { setStatus(`WebGL2 error: ${(e as Error).message}`); }
   }, []);
 
-  // Re-render when params change
   useEffect(() => {
     if (!glRef.current || !hasImage) return;
     render(glRef.current, buildParams());
@@ -132,32 +134,64 @@ export default function RevelaEditor() {
     loadFromUrl(URL.createObjectURL(file), file.name);
   }, [loadFromUrl]);
 
+  const setB = useCallback(<K extends keyof BasicParams>(k: K, v: BasicParams[K]) =>
+    setBasic(p => ({ ...p, [k]: v })), []);
+
   return (
     <div className="flex h-screen bg-zinc-950 text-zinc-200 font-sans select-none overflow-hidden">
       {/* Sidebar */}
-      <aside className="w-64 flex flex-col bg-zinc-900 border-r border-zinc-800 overflow-y-auto flex-shrink-0">
+      <aside className="w-56 flex flex-col bg-zinc-900 border-r border-zinc-800 overflow-y-auto flex-shrink-0">
         {/* Header */}
         <div className="px-4 py-3 border-b border-zinc-800 flex items-center gap-2 flex-shrink-0">
           <span className="text-sm font-bold text-white tracking-tight">Revela</span>
           {filename && <span className="text-xs text-zinc-500 truncate">{filename}</span>}
         </div>
 
-        {/* Basic */}
+        {/* 基本補正 */}
         <Panel title="基本補正">
-          <Slider label="EXPOSURE" value={basic.exposure} min={-5} max={5} step={0.1} unit=" EV"
-            onChange={v => setBasic(p => ({ ...p, exposure: v }))} />
-          <Slider label="CONTRAST" value={basic.contrast} min={-100} max={100}
-            onChange={v => setBasic(p => ({ ...p, contrast: v }))} />
-          <div className="h-px bg-zinc-800 my-0.5" />
-          <Slider label="HIGHLIGHTS" value={basic.highlights} min={-100} max={100}
-            onChange={v => setBasic(p => ({ ...p, highlights: v }))} />
-          <Slider label="SHADOWS" value={basic.shadows} min={-100} max={100}
-            onChange={v => setBasic(p => ({ ...p, shadows: v }))} />
-          <div className="h-px bg-zinc-800 my-0.5" />
-          <Slider label="WHITES" value={basic.whites} min={-100} max={100}
-            onChange={v => setBasic(p => ({ ...p, whites: v }))} />
-          <Slider label="BLACKS" value={basic.blacks} min={-100} max={100}
-            onChange={v => setBasic(p => ({ ...p, blacks: v }))} />
+          {/* White Balance */}
+          <div className="pb-1">
+            <p className="text-[9px] text-zinc-600 uppercase tracking-widest mb-1">ホワイトバランス</p>
+            <Slider label="TEMP" value={basic.temp} min={-100} max={100}
+              onChange={v => setB("temp", v)} />
+            <Slider label="TINT" value={basic.tint} min={-150} max={150}
+              onChange={v => setB("tint", v)} />
+          </div>
+          <div className="h-px bg-zinc-800 my-1" />
+          {/* Tone */}
+          <div className="pb-1">
+            <p className="text-[9px] text-zinc-600 uppercase tracking-widest mb-1">トーン</p>
+            <Slider label="EXPOSURE" value={basic.exposure} min={-5} max={5} step={0.1} unit=" EV"
+              onChange={v => setB("exposure", v)} />
+            <Slider label="CONTRAST" value={basic.contrast} min={-100} max={100}
+              onChange={v => setB("contrast", v)} />
+            <div className="h-px bg-zinc-800 my-0.5" />
+            <Slider label="HIGHLIGHTS" value={basic.highlights} min={-100} max={100}
+              onChange={v => setB("highlights", v)} />
+            <Slider label="SHADOWS" value={basic.shadows} min={-100} max={100}
+              onChange={v => setB("shadows", v)} />
+            <div className="h-px bg-zinc-800 my-0.5" />
+            <Slider label="WHITES" value={basic.whites} min={-100} max={100}
+              onChange={v => setB("whites", v)} />
+            <Slider label="BLACKS" value={basic.blacks} min={-100} max={100}
+              onChange={v => setB("blacks", v)} />
+          </div>
+          <div className="h-px bg-zinc-800 my-1" />
+          {/* Presence */}
+          <div>
+            <p className="text-[9px] text-zinc-600 uppercase tracking-widest mb-1">プレゼンス</p>
+            <Slider label="TEXTURE" value={basic.texture} min={-100} max={100}
+              onChange={v => setB("texture", v)} />
+            <Slider label="CLARITY" value={basic.clarity} min={-100} max={100}
+              onChange={v => setB("clarity", v)} />
+            <Slider label="DEHAZE" value={basic.dehaze} min={-100} max={100}
+              onChange={v => setB("dehaze", v)} />
+            <div className="h-px bg-zinc-800 my-0.5" />
+            <Slider label="VIBRANCE" value={basic.vibrance} min={-100} max={100}
+              onChange={v => setB("vibrance", v)} />
+            <Slider label="SATURATION" value={basic.saturation} min={-100} max={100}
+              onChange={v => setB("saturation", v)} />
+          </div>
         </Panel>
 
         {/* Tone Curve */}
@@ -166,7 +200,7 @@ export default function RevelaEditor() {
         </Panel>
 
         {/* LAB */}
-        <Panel title="LAB">
+        <Panel title="LAB" defaultOpen={false}>
           <Slider label="LUMINANCE" value={lab.L} min={-100} max={100}
             onChange={v => setLab(p => ({ ...p, L: v }))} />
           <Slider label="A  GREEN – RED" value={lab.A} min={-100} max={100}
@@ -190,8 +224,8 @@ export default function RevelaEditor() {
           <ColorMixer value={colorMixer} onChange={setColorMixer} />
         </Panel>
 
-        {/* Footer actions */}
-        <div className="mt-auto p-4 flex flex-col gap-2 border-t border-zinc-800 flex-shrink-0">
+        {/* Footer */}
+        <div className="mt-auto p-3 flex flex-col gap-2 border-t border-zinc-800 flex-shrink-0">
           <button
             onClick={handleReset}
             disabled={!hasImage}
