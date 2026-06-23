@@ -69,7 +69,7 @@ export default function RevelaEditor({ catalogPhoto, onBackToLibrary }: Props) {
   const [calibration,  setCalibration]  = useState<CalibrationParams>(DEFAULT_CAL);
   const [mask,         setMask]         = useState<MaskParams>(DEFAULT_MASK);
   const [lut,          setLut]          = useState<CubeLUT | null>(null);
-  const [lutStrength,  setLutStrength]  = useState(1);
+  const [lutStrength,  setLutStrength]  = useState(0);
 
   const [hasImage, setHasImage] = useState(false);
   const [filename, setFilename] = useState<string | null>(null);
@@ -107,7 +107,8 @@ export default function RevelaEditor({ catalogPhoto, onBackToLibrary }: Props) {
       if (s.lumSat)       setLumSat(s.lumSat);
       if (s.calibration)  setCalibration(s.calibration);
       if (s.mask)         setMask(s.mask);
-      if (s.lutStrength !== undefined) setLutStrength(s.lutStrength);
+      // lutStrength is NOT restored: LUT files are not persisted, so a saved
+      // non-zero strength without a loaded LUT file would corrupt the image.
     } catch { /* ignore */ }
   }, []);
 
