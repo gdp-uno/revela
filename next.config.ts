@@ -8,17 +8,11 @@ const nextConfig: NextConfig = {
   images: { unoptimized: true },
   assetPrefix: isTauri ? "/" : undefined,
   basePath: isStaging ? "/edit" : undefined,
-  webpack(config, { isServer }) {
-    if (!isServer) {
-      // Emit libraw.wasm to static/chunks/ so the libraw-wasm WebWorker can fetch it
-      // by relative URL (worker's import.meta.url is also in static/chunks/)
-      config.module.rules.push({
-        test: /libraw\.wasm$/,
-        type: "asset/resource",
-        generator: { filename: "static/chunks/[name][ext]" },
-      });
-    }
-    return config;
+  // Required for Next.js 16 which defaults to Turbopack
+  turbopack: {},
+  // Expose basePath to client-side code for the RAW worker URL
+  env: {
+    NEXT_PUBLIC_BASE_PATH: isStaging ? "/edit" : "",
   },
 };
 
