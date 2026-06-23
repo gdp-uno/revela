@@ -1,0 +1,16 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/schema/acl/schemas/capability.schema.json",
+  "identifier": "default",
+  "description": "Default capabilities for Revela",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    "fs:allow-read-dir",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
+    "fs:allow-create",
+    "dialog:allow-open",
+    "dialog:allow-save"
+  ]
+}
