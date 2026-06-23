@@ -1,5 +1,8 @@
 "use client";
-import LibRaw from "libraw-wasm";
+
+// Side-effect import: forces webpack to emit libraw.wasm to static/chunks/
+// so the libraw-wasm WebWorker can fetch it at the correct relative URL.
+import "libraw-wasm/dist/libraw.wasm";
 
 export const RAW_EXTENSIONS = new Set([
   "arw", "sr2", "srf",   // Sony
@@ -22,18 +25,22 @@ export function isRawFile(file: File): boolean {
   return RAW_EXTENSIONS.has(ext);
 }
 
-// ファイル選択 accept 文字列
 export const RAW_ACCEPT = [...RAW_EXTENSIONS].map(e => `.${e}`).join(",");
 
-// サムネイル生成（高速：埋め込みJPEGを優先）
+// Lazy-load LibRaw to avoid Worker creation during SSR / module init
+async function createLibRaw() {
+  const { default: LibRaw } = await import("libraw-wasm");
+  return new LibRaw();
+}
+
+// Thumbnail generation (fast: prefers embedded JPEG)
 export async function decodeRawThumbnail(
   file: File,
   maxSize = 256
 ): Promise<{ dataURL: string; width: number; height: number }> {
   const buffer = await file.arrayBuffer();
-  const raw = new LibRaw();
+  const raw = await createLibRaw();
   try {
-    // サムネイル取得のみなら軽量設定
     await raw.open(new Uint8Array(buffer), {
       outputBps: 8,
       outputColor: 1,
@@ -47,7 +54,6 @@ export async function decodeRawThumbnail(
     const fullH = meta?.height ?? 0;
 
     if (thumb && thumb.format === "jpeg") {
-      // 埋め込みJPEGを使う（最速）
       const jpegCopy = new Uint8Array(thumb.data.byteLength);
       jpegCopy.set(thumb.data);
       const blob = new Blob([jpegCopy.buffer], { type: "image/jpeg" });
@@ -69,7 +75,6 @@ export async function decodeRawThumbnail(
       });
     }
 
-    // 埋め込みサムネイルがない場合はデコード済みデータから生成
     const imgData = await raw.imageData();
     if (!imgData) throw new Error("RAWデコード失敗");
     return rgbDataToThumbnail(imgData.data as Uint8Array, imgData.width, imgData.height, imgData.colors, maxSize);
@@ -78,20 +83,20 @@ export async function decodeRawThumbnail(
   }
 }
 
-// フルデコード（現像用）→ ImageData を返す
+// Full decode for develop view → returns ImageData
 export async function decodeRawToImageData(file: File): Promise<{
   imageData: ImageData;
   width: number;
   height: number;
 }> {
   const buffer = await file.arrayBuffer();
-  const raw = new LibRaw();
+  const raw = await createLibRaw();
   try {
     await raw.open(new Uint8Array(buffer), {
       outputBps: 8,
-      outputColor: 1,    // sRGB（既存パイプラインと同じ入力）
-      useCameraWb: true, // カメラWBを初期値として使用
-      userQual: 3,       // AHD補間（高品質デモザイク）
+      outputColor: 1,
+      useCameraWb: true,
+      userQual: 3,
       noAutoBright: false,
       highlight: 0,
     });

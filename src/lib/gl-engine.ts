@@ -572,10 +572,15 @@ const MASK_TYPE_INT: Record<MaskType, number> = {
 };
 
 export function render(state: GlState, params: AllParams): void {
-  const { gl, uniforms, vao, texWidth, texHeight } = state;
+  const { gl, program, uniforms, vao, texWidth, texHeight } = state;
   if (texWidth===0) return;
   gl.canvas.width=texWidth; gl.canvas.height=texHeight;
   gl.viewport(0,0,texWidth,texHeight);
+  // Re-bind program and sampler units after potential canvas resize state reset
+  gl.useProgram(program);
+  gl.uniform1i(uniforms["u_image"],0);
+  gl.uniform1i(uniforms["u_tone_curve"],1);
+  gl.uniform1i(uniforms["u_lut_3d"],2);
 
   const { basic:b, detail:d, lab, hsv, colorMixer:cm, colorGrading:cg, vignette:vig, grain, calibration:cal, mask, lutStrength } = params;
 

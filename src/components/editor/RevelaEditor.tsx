@@ -177,7 +177,6 @@ export default function RevelaEditor({ catalogPhoto, onBackToLibrary }: Props) {
       upload3DLUT(glRef.current, newLut);
       setLutStrength(1);
     } else {
-      // Reset to identity
       const { gl, lut3dTex } = glRef.current;
       gl.activeTexture(gl.TEXTURE2);
       gl.bindTexture(gl.TEXTURE_3D, lut3dTex);
@@ -186,6 +185,20 @@ export default function RevelaEditor({ catalogPhoto, onBackToLibrary }: Props) {
       setLutStrength(0);
     }
   }, []);
+
+  const loadFileAsImage = useCallback((file: File) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      if (!glRef.current) return;
+      glRef.current = uploadTexture(glRef.current, img);
+      render(glRef.current, buildParams());
+      setHasImage(true);
+      setFilename(file.name);
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  }, [buildParams]);
 
   const loadFromUrl = useCallback((url: string, name: string) => {
     const img = new Image();
@@ -197,6 +210,21 @@ export default function RevelaEditor({ catalogPhoto, onBackToLibrary }: Props) {
       setFilename(name);
     };
     img.src = url;
+  }, [buildParams]);
+
+  const loadRawFile = useCallback(async (file: File) => {
+    try {
+      setStatus("RAWデコード中...");
+      const { imageData } = await decodeRawToImageData(file);
+      if (!glRef.current) return;
+      glRef.current = uploadTexture(glRef.current, imageData);
+      render(glRef.current, buildParams());
+      setHasImage(true);
+      setFilename(file.name);
+      setStatus(null);
+    } catch (e) {
+      setStatus(`RAW読み込みエラー: ${(e as Error).message}`);
+    }
   }, [buildParams]);
 
   const handleOpen = useCallback(async () => {
@@ -221,23 +249,14 @@ export default function RevelaEditor({ catalogPhoto, onBackToLibrary }: Props) {
         const file = input.files?.[0];
         if (!file) return;
         if (isRawFile(file)) {
-          try {
-            setStatus("RAWデコード中...");
-            const { imageData } = await decodeRawToImageData(file);
-            if (!glRef.current) return;
-            glRef.current = uploadTexture(glRef.current, imageData);
-            render(glRef.current, buildParams());
-            setHasImage(true);
-            setFilename(file.name);
-            setStatus(null);
-          } catch (e) { setStatus(`RAW読み込みエラー: ${(e as Error).message}`); }
+          await loadRawFile(file);
         } else {
-          loadFromUrl(URL.createObjectURL(file), file.name);
+          loadFileAsImage(file);
         }
       };
       input.click();
     }
-  }, [buildParams, loadFromUrl]);
+  }, [buildParams, loadFileAsImage, loadRawFile]);
 
   const handleExport = useCallback(async () => {
     if (!glRef.current || !hasImage) return;
@@ -271,7 +290,7 @@ export default function RevelaEditor({ catalogPhoto, onBackToLibrary }: Props) {
     setTimeout(() => setStatus(null), 2000);
   }, [catalogPhoto, settingsJson]);
 
-  const handleReset = useCallback(() => {
+  const handleResetAll = useCallback(() => {
     const d = makeDefaultAll();
     setBasic(d.basic); setDetail(d.detail); setLab(d.lab); setHsv(d.hsv);
     setColorMixer(d.colorMixerState); setColorGrading(d.colorGrading);
@@ -279,12 +298,28 @@ export default function RevelaEditor({ catalogPhoto, onBackToLibrary }: Props) {
     setMask(d.mask); setLutStrength(1);
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  // Per-panel reset callbacks
+  const resetBasic       = useCallback(() => setBasic(DEFAULT_BASIC), []);
+  const resetLab         = useCallback(() => setLab(DEFAULT_LAB), []);
+  const resetHsv         = useCallback(() => setHsv(DEFAULT_HSV), []);
+  const resetColorMixer  = useCallback(() => setColorMixer(DEFAULT_COLOR_MIXER), []);
+  const resetColorGrading= useCallback(() => setColorGrading(DEFAULT_COLOR_GRADING), []);
+  const resetDetail      = useCallback(() => setDetail(DEFAULT_DETAIL), []);
+  const resetVignette    = useCallback(() => { setVignette(DEFAULT_VIG); setGrain(DEFAULT_GRAIN); }, []);
+  const resetCalibration = useCallback(() => setCalibration(DEFAULT_CAL), []);
+  const resetMask        = useCallback(() => setMask(DEFAULT_MASK), []);
+
+  // Drop handler — supports JPEG, PNG, and RAW files
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
-    if (!file || !file.type.startsWith("image/")) return;
-    loadFromUrl(URL.createObjectURL(file), file.name);
-  }, [loadFromUrl]);
+    if (!file) return;
+    if (isRawFile(file)) {
+      await loadRawFile(file);
+    } else if (file.type.startsWith("image/")) {
+      loadFromUrl(URL.createObjectURL(file), file.name);
+    }
+  }, [loadRawFile, loadFromUrl]);
 
   const setB   = useCallback(<K extends keyof BasicParams>(k: K, v: BasicParams[K]) =>
     setBasic(p => ({ ...p, [k]: v })), []);
@@ -323,7 +358,7 @@ export default function RevelaEditor({ catalogPhoto, onBackToLibrary }: Props) {
         </Panel>
 
         {/* 基本補正 */}
-        <Panel title="基本補正">
+        <Panel title="基本補正" onReset={resetBasic}>
           <div className="pb-1">
             <p className="text-[9px] text-zinc-600 uppercase tracking-widest mb-1">ホワイトバランス</p>
             <Slider label="TEMP" value={basic.temp} min={-100} max={100} onChange={v=>setB("temp",v)} />
@@ -359,31 +394,31 @@ export default function RevelaEditor({ catalogPhoto, onBackToLibrary }: Props) {
         </Panel>
 
         {/* LAB */}
-        <Panel title="LAB" defaultOpen={false}>
+        <Panel title="LAB" defaultOpen={false} onReset={resetLab}>
           <Slider label="LUMINANCE"       value={lab.L} min={-100} max={100} onChange={v=>setLab(p=>({...p,L:v}))} />
           <Slider label="A  GREEN – RED"  value={lab.A} min={-100} max={100} onChange={v=>setLab(p=>({...p,A:v}))} />
           <Slider label="B  BLUE – YELLOW" value={lab.B} min={-100} max={100} onChange={v=>setLab(p=>({...p,B:v}))} />
         </Panel>
 
         {/* HSV */}
-        <Panel title="HSV" defaultOpen={false}>
+        <Panel title="HSV" defaultOpen={false} onReset={resetHsv}>
           <Slider label="HUE"        value={hsv.hue}        min={-180} max={180} unit="°" onChange={v=>setHsv(p=>({...p,hue:v}))} />
           <Slider label="SATURATION" value={hsv.saturation} min={-100} max={100}           onChange={v=>setHsv(p=>({...p,saturation:v}))} />
           <Slider label="VALUE"      value={hsv.value}      min={-100} max={100}           onChange={v=>setHsv(p=>({...p,value:v}))} />
         </Panel>
 
         {/* Color Mixer */}
-        <Panel title="カラーチャンネル" defaultOpen={false}>
+        <Panel title="カラーチャンネル" defaultOpen={false} onReset={resetColorMixer}>
           <ColorMixer value={colorMixer} onChange={setColorMixer} />
         </Panel>
 
         {/* Color Grading */}
-        <Panel title="カラーグレーディング" defaultOpen={false}>
+        <Panel title="カラーグレーディング" defaultOpen={false} onReset={resetColorGrading}>
           <ColorGrading value={colorGrading} onChange={setColorGrading} />
         </Panel>
 
         {/* Detail (NR + Sharp) */}
-        <Panel title="ディテール" defaultOpen={false}>
+        <Panel title="ディテール" defaultOpen={false} onReset={resetDetail}>
           <DetailPanel value={detail} onChange={setDetail} />
         </Panel>
 
@@ -398,26 +433,26 @@ export default function RevelaEditor({ catalogPhoto, onBackToLibrary }: Props) {
         </Panel>
 
         {/* Mask */}
-        <Panel title="マスク" defaultOpen={false}>
+        <Panel title="マスク" defaultOpen={false} onReset={resetMask}>
           <MaskPanel value={mask} onChange={setMask} />
         </Panel>
 
         {/* Effects */}
-        <Panel title="効果" defaultOpen={false}>
+        <Panel title="効果" defaultOpen={false} onReset={resetVignette}>
           <p className="text-[9px] text-zinc-600 uppercase tracking-widest mb-1">ビネット</p>
           <Slider label="AMOUNT"    value={vignette.amount}    min={-100} max={100} onChange={v=>setV("amount",v)} />
-          <Slider label="MIDPOINT"  value={vignette.midpoint}  min={0}    max={100} onChange={v=>setV("midpoint",v)} />
-          <Slider label="FEATHER"   value={vignette.feather}   min={0}    max={100} onChange={v=>setV("feather",v)} />
+          <Slider label="MIDPOINT"  value={vignette.midpoint}  min={0}    max={100} defaultValue={50} onChange={v=>setV("midpoint",v)} />
+          <Slider label="FEATHER"   value={vignette.feather}   min={0}    max={100} defaultValue={50} onChange={v=>setV("feather",v)} />
           <Slider label="ROUNDNESS" value={vignette.roundness} min={-100} max={100} onChange={v=>setV("roundness",v)} />
           <div className="h-px bg-zinc-800 my-1" />
           <p className="text-[9px] text-zinc-600 uppercase tracking-widest mb-1">グレイン</p>
           <Slider label="AMOUNT"    value={grain.amount}    min={0}   max={100} onChange={v=>setGr("amount",v)} />
-          <Slider label="SIZE"      value={grain.size}      min={1}   max={50}  onChange={v=>setGr("size",v)} />
-          <Slider label="ROUGHNESS" value={grain.roughness} min={0}   max={100} onChange={v=>setGr("roughness",v)} />
+          <Slider label="SIZE"      value={grain.size}      min={1}   max={50}  defaultValue={25} onChange={v=>setGr("size",v)} />
+          <Slider label="ROUGHNESS" value={grain.roughness} min={0}   max={100} defaultValue={50} onChange={v=>setGr("roughness",v)} />
         </Panel>
 
         {/* Calibration */}
-        <Panel title="キャリブレーション" defaultOpen={false}>
+        <Panel title="キャリブレーション" defaultOpen={false} onReset={resetCalibration}>
           <p className="text-[9px] text-zinc-600 uppercase tracking-widest mb-1">シャドウ</p>
           <Slider label="TINT" value={calibration.shadowTint} min={-100} max={100} onChange={v=>setCal("shadowTint",v)} />
           <div className="h-px bg-zinc-800 my-1" />
@@ -443,10 +478,10 @@ export default function RevelaEditor({ catalogPhoto, onBackToLibrary }: Props) {
               カタログに保存
             </button>
           )}
-          <button onClick={handleReset} disabled={!hasImage}
+          <button onClick={handleResetAll} disabled={!hasImage}
             className="w-full py-1.5 text-xs text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-500 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
-            リセット
+            全パラメータ リセット
           </button>
           <button onClick={handleExport} disabled={!hasImage}
             className="w-full py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-white rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"

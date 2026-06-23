@@ -36,6 +36,7 @@ export default function Slider({
   const barWidth = isPos ? pct - zeroPct : zeroPct - pct;
 
   const displayVal = (value > 0 ? "+" : "") + value.toFixed(decimals);
+  const isModified = Math.abs(value - defaultValue) >= Math.max(step * 0.5, 0.001);
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -77,10 +78,24 @@ export default function Slider({
   }, [defaultValue, onChange]);
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1.5 group/slider">
       <div className="flex justify-between items-center">
         <span className="text-[10px] font-medium tracking-widest uppercase text-zinc-500">{label}</span>
-        <span className="text-[11px] text-zinc-300 tabular-nums">{displayVal}{unit}</span>
+        <div className="flex items-center gap-1.5">
+          {isModified && (
+            <button
+              className="text-[10px] text-zinc-600 hover:text-zinc-300 opacity-0 group-hover/slider:opacity-100 transition-opacity leading-none"
+              onClick={() => onChange(defaultValue)}
+              title="リセット (ダブルクリックでも可)"
+            >
+              ↺
+            </button>
+          )}
+          {isModified && (
+            <span className="w-1 h-1 rounded-full bg-zinc-500 flex-shrink-0" />
+          )}
+          <span className="text-[11px] text-zinc-300 tabular-nums">{displayVal}{unit}</span>
+        </div>
       </div>
       <div
         ref={trackRef}
