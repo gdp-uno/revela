@@ -8,6 +8,7 @@ void main() { v_uv = a_position*0.5+0.5; gl_Position = vec4(a_position,0,1); }`;
 
 const FRAG_SRC = `#version 300 es
 precision highp float;
+precision mediump sampler3D;
 in vec2 v_uv;
 out vec4 fragColor;
 
