@@ -1,4 +1,6 @@
-name: Deploy Staging (Revela)
+name: Build Check (Revela)
+# Staging deployment is handled by gdp-uno/graindays CI which has VPS SSH access.
+# This workflow only verifies the build passes on every push.
 
 on:
   push:
@@ -7,7 +9,7 @@ on:
       - develop
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,44 +22,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Type check
+        run: npx tsc --noEmit
+
       - name: Build (basePath=/edit)
         run: npm run build
         env:
           DEPLOY_TARGET: staging
-
-      - name: Configure SSH
-        run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
-
-      - name: Sync to VPS
-        run: |
-          rsync -az --delete \
-            -e "ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no" \
-            --exclude '.git' \
-            --exclude '.github' \
-            --exclude 'node_modules' \
-            --exclude 'src' \
-            --exclude 'src-tauri' \
-            --exclude '.env*' \
-            ./ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/photo-editor-staging/
-
-      - name: Install deps + PM2 restart on VPS
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            set -e
-            cd /var/www/photo-editor-staging
-            npm install --production=false
-            if pm2 list | grep -q "revela-staging"; then
-              pm2 restart revela-staging
-            else
-              pm2 start npm --name "revela-staging" -- start -- -p 3001
-            fi
-            pm2 save
-            echo "✅ Revela staging deployed"
